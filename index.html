@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="GPS Tracker" />
+<title>Live GPS Tracker</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@300;400;600;800;900&display=swap" rel="stylesheet" />
+
+<!-- Firebase SDK v9 compat -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #060709;
+    --panel:     #0c0e14;
+    --panel2:    #10121a;
+    --border:    rgba(255,255,255,.06);
+    --border2:   rgba(255,255,255,.1);
+    --accent:    #22d3ee;
+    --accent-dim: rgba(34,211,238,.12);
+    --accent2:   #f43f5e;
+    --green:     #10b981;
+    --green-dim: rgba(16,185,129,.12);
+    --amber:     #f59e0b;
+    --text:      #e2e8f0;
+    --text2:     #94a3b8;
+    --muted:     #475569;
+    --font-ui:   'Outfit', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --radius:    10px;
+    --radius-lg: 16px;
+    --glow-c:    0 0 32px rgba(34,211,238,.2);
+    --glow-g:    0 0 32px rgba(16,185,129,.2);
+  }
+
+  html {
+    height: -webkit-fill-available;
+    height: 100%;
+  }
+  body {
+    height: 100%;
+    min-height: -webkit-fill-available;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
+
+  /* ─── Animated grid background ─────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(34,211,238,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34,211,238,.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 100%);
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 100%);
+  }
+
+  /* ─── Layout ────────────────────────────────────────────── */
+  .app {
+    display: grid;
+    grid-template-rows: 52px 1fr;
+    grid-template-columns: 1fr;
+    height: 100vh;
+    height: -webkit-fill-available;
+    position: relative; z-index: 1;
+  }
+
+  /* ─── Header ────────────────────────────────────────────── */
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 20px;
+    padding-left: max(20px, env(safe-area-inset-left));
+    padding-right: max(20px, env(safe-area-inset-right));
+    background: rgba(12,14,20,.85);
+    border-bottom: 1px solid var(--border2);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    z-index: 10;
+    position: relative;
+    overflow: hidden;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanline 4s ease-in-out infinite;
+  }
+  @keyframes scanline {
+    0%, 100% { opacity: 0; transform: scaleX(0); }
+    50%       { opacity: 1; transform: scaleX(1); }
+  }
+
+  .logo-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    background: var(--accent-dim);
+    border: 1px solid rgba(34,211,238,.25);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .logo-icon::before {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; transform:scale(1); box-shadow: 0 0 8px var(--accent); }
+    50%     { opacity:.6; transform:scale(1.3); box-shadow: 0 0 16px var(--accent); }
+  }
+
+  header h1 {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .15em;
+    text-transform: uppercase;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+  header h1 strong { color: var(--text); font-weight: 800; }
+
+  .header-sep {
+    width: 1px; height: 16px;
+    background: var(--border2);
+    flex-shrink: 0;
+  }
+
+  .header-right { margin-left:auto; display:flex; align-items:center; gap:8px; flex-shrink:0; }
+
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 11px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--muted);
+    background: rgba(255,255,255,.03);
+    transition: border-color .4s, color .4s, background .4s;
+    white-space: nowrap;
+  }
+  .status-pill.live  { border-color: rgba(16,185,129,.4); color: var(--green); background: var(--green-dim); }
+  .status-pill.error { border-color: rgba(244,63,94,.4);  color: var(--accent2); background: rgba(244,63,94,.08); }
+  .status-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .status-pill.live .status-dot { animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
+
+  .source-badge {
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all .4s;
+    white-space: nowrap;
+  }
+  .source-badge.real     { background: var(--green-dim); border-color: rgba(16,185,129,.3); color: var(--green); }
+  .source-badge.fallback { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.3); color: var(--amber); }
+
+  #reset-btn {
+    padding: 5px 12px;
+    border: 1px solid rgba(244,63,94,.3);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .05em;
+    color: var(--accent2);
+    background: rgba(244,63,94,.06);
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #reset-btn:hover {
+    background: rgba(244,63,94,.15);
+    border-color: rgba(244,63,94,.6);
+  }
+
+  /* ─── Sidebar panel ─────────────────────────────────────── */
+  aside {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    width: 224px;
+    max-height: calc(100vh - 52px - 20px);
+    z-index: 15;
+    background: rgba(10,12,18,.88);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius-lg);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    backdrop-filter: blur(24px) saturate(1.4);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overflow-x: hidden;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03);
+  }
+
+  /* section label above groups */
+  .section-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    padding: 4px 2px 2px;
+    border-top: 1px solid var(--border);
+    margin-top: 2px;
+  }
+  .section-label:first-child { border-top: none; margin-top: 0; padding-top: 0; }
+
+  /* ─── Cards ─────────────────────────────────────────────── */
+  .card {
+    background: rgba(255,255,255,.025);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    transition: border-color .3s, box-shadow .3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent);
+  }
+  .card.updated {
+    animation: flash 600ms ease forwards;
+  }
+  @keyframes flash {
+    0%   { border-color: rgba(34,211,238,.6); box-shadow: 0 0 16px rgba(34,211,238,.15); }
+    100% { border-color: var(--border); box-shadow: none; }
+  }
+
+  .card-label {
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+  }
+  .card-value {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1.2;
+  }
+  .card-value.big   { font-size: 17px; color: var(--green); }
+  .card-value.small { font-size: 12px; letter-spacing: -.01em; }
+  .card-sub {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 3px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
+  .coords-row { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .stats-grid .card-value { font-size: 14px; }
+
+  /* ─── Log ───────────────────────────────────────────────── */
+  .log-wrap { flex: 1; min-height: 80px; display: flex; flex-direction: column; gap: 6px; }
+  .log-box {
+    flex: 1;
+    max-height: 120px;
+    background: rgba(0,0,0,.3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 10px;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+  }
+  .log-entry {
+    display: flex;
+    gap: 8px;
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(255,255,255,.03);
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-3px) } to { opacity:1 } }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-msg.ok   { color: var(--green); }
+  .log-msg.warn { color: var(--amber); }
+  .log-msg.err  { color: var(--accent2); }
+
+  /* ─── Map ───────────────────────────────────────────────── */
+  #map-wrap { position: relative; grid-row: 2; grid-column: 1; }
+  #map { width: 100%; height: 100%; }
+
+  #map-overlay {
+    position: absolute; inset: 0; z-index: 5;
+    background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    transition: opacity .6s;
+  }
+  #map-overlay.hidden { opacity: 0; pointer-events: none; }
+
+  .spinner-wrap { position: relative; width: 52px; height: 52px; }
+  .spinner-ring {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+  }
+  .spinner-ring:nth-child(1) {
+    border-top-color: var(--accent);
+    animation: spin .9s linear infinite;
+  }
+  .spinner-ring:nth-child(2) {
+    inset: 6px;
+    border-top-color: rgba(34,211,238,.3);
+    animation: spin 1.4s linear infinite reverse;
+  }
+  .spinner-ring:nth-child(3) {
+    inset: 14px;
+    border: none;
+    background: radial-gradient(circle, rgba(34,211,238,.15) 0%, transparent 70%);
+    animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg) } }
+
+  #map-overlay p {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: .08em;
+  }
+
+  /* ─── Recenter button ───────────────────────────────────── */
+  #recenter-btn {
+    position: absolute; bottom: 24px; right: 24px; z-index: 10;
+    width: 44px; height: 44px; /* iOS HIG minimum tap target */
+    border-radius: 10px;
+    background: rgba(12,14,20,.9);
+    border: 1px solid var(--border2);
+    color: var(--accent);
+    font-size: 18px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 4px 20px rgba(0,0,0,.4), var(--glow-c);
+    transition: transform .2s, box-shadow .2s, border-color .2s;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #recenter-btn:hover {
+    transform: scale(1.08);
+    border-color: rgba(34,211,238,.4);
+    box-shadow: 0 4px 24px rgba(0,0,0,.5), 0 0 24px rgba(34,211,238,.3);
+  }
+
+  /* ─── Config Modal ──────────────────────────────────────── */
+  #config-modal {
+    position: fixed; inset: 0;
+    background: rgba(6,7,9,.96);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+    padding: 16px;
+  }
+  #config-modal.hidden { display: none; }
+
+  /* dot-grid overlay inside modal bg */
+  #config-modal::before {
+    content: '';
+    position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(34,211,238,.08) 1px, transparent 1px);
+    background-size: 32px 32px;
+    -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black, transparent);
+    mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, black, transparent);
+  }
+
+  .modal-box {
+    position: relative;
+    background: linear-gradient(145deg, #0e1019, #0a0c12);
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 20px;
+    padding: 32px 28px;
+    width: 100%;
+    max-width: 440px;
+    box-shadow: 0 32px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(34,211,238,.06), inset 0 1px 0 rgba(255,255,255,.06);
+    overflow-y: auto;
+    max-height: calc(100vh - 32px);
+  }
+
+  /* top accent bar on modal */
+  .modal-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 32px; right: 32px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(34,211,238,.6), transparent);
+    border-radius: 999px;
+  }
+
+  .modal-icon {
+    width: 48px; height: 48px;
+    border-radius: 14px;
+    background: var(--accent-dim);
+    border: 1px solid rgba(34,211,238,.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+
+  .modal-box h2 {
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: -.01em;
+    color: var(--text);
+    margin-bottom: 4px;
+    line-height: 1;
+  }
+  .modal-box .subtitle {
+    font-size: 12px;
+    color: var(--text2);
+    font-family: var(--font-mono);
+    font-weight: 300;
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+
+  .fields-group {
+    background: rgba(255,255,255,.02);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 4px 0;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .field {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .field:last-child { border-bottom: none; }
+
+  .field label {
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+  }
+  .field input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+    font-weight: 400;
+    outline: none;
+    caret-color: var(--accent);
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 0; /* iOS adds border-radius to inputs */
+  }
+  .field input::placeholder { color: var(--muted); }
+  .field input:focus ~ .field-line { transform: scaleX(1); }
+  .field-line {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    transform: scaleX(0);
+    transition: transform .3s;
+  }
+  .field-focus-wrapper { position: relative; }
+  .field-focus-wrapper:focus-within .field-line { transform: scaleX(1); }
+
+  .field .hint {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 5px;
+    font-family: var(--font-mono);
+    opacity: .7;
+  }
+
+  /* ─── Error banner ──────────────────────────────────────── */
+  #login-error {
+    display: none;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    background: rgba(244,63,94,.08);
+    border: 1px solid rgba(244,63,94,.35);
+    border-radius: 10px;
+    animation: fadeIn .25s ease;
+  }
+  #login-error.visible { display: flex; }
+  .error-icon {
+    font-size: 15px;
+    flex-shrink: 0;
+    line-height: 1.4;
+  }
+  .error-text {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent2);
+    line-height: 1.5;
+  }
+  .error-text strong {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  /* Highlight invalid field */
+  .field.invalid .field-line { transform: scaleX(1); background: linear-gradient(90deg, transparent, var(--accent2), transparent); }
+  .field.invalid input { color: var(--accent2); }
+
+  /* Loading state on button */
+  .btn.loading { opacity: .7; pointer-events: none; }
+  .btn.loading::after {
+    content: '';
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid rgba(2,10,13,.4);
+    border-top-color: #020a0d;
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    margin-left: 10px;
+    vertical-align: middle;
+  }
+
+  .remember-row {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 16px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,.02);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .remember-row input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: 14px; height: 14px;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .remember-row label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text2);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .btn {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: #020a0d;
+    border: none;
+    border-radius: 10px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all .2s;
+    position: relative;
+    overflow: hidden;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,.15) 0%, transparent 60%);
+  }
+  .btn:hover {
+    background: #67e8f9;
+    box-shadow: 0 0 32px rgba(34,211,238,.4);
+    transform: translateY(-1px);
+  }
+  .btn:active { transform: scale(.98) translateY(0); }
+
+  /* ─── Mobile tab bar ────────────────────────────────────── */
+  #tab-bar { display: none; }
+
+  @media (max-width: 640px) {
+    html, body { overflow: hidden; overscroll-behavior: none; }
+
+    .app {
+      grid-template-columns: 1fr;
+      /* tab bar height 58px + safe area bottom */
+      grid-template-rows: 52px 1fr calc(58px + env(safe-area-inset-bottom));
+      height: 100vh;
+      height: -webkit-fill-available;
+    }
+
+    header {
+      padding: 0 14px;
+      padding-left: max(14px, env(safe-area-inset-left));
+      padding-right: max(14px, env(safe-area-inset-right));
+      gap: 8px;
+    }
+    header h1 { font-size: 12px; }
+    .source-badge { display: none; }
+
+    aside {
+      border-right: none;
+      grid-row: 2;
+      grid-column: 1;
+      position: absolute;
+      inset: 0 0 0 0;
+      top: 0; bottom: 0;
+      border-radius: 0;
+      z-index: 20;
+      transform: translateX(-100%);
+      transition: transform .35s cubic-bezier(.4,0,.2,1);
+      padding: 14px 12px;
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
+      max-height: none;
+      width: 100%;
+    }
+    aside.mobile-visible { transform: translateX(0); }
+
+    #map-wrap { grid-row: 2; grid-column: 1; height: 100%; }
+    #recenter-btn {
+      bottom: 12px;
+      right: max(12px, env(safe-area-inset-right));
+    }
+
+    #tab-bar {
+      display: flex;
+      grid-row: 3; grid-column: 1;
+      background: rgba(10,12,18,.95);
+      border-top: 1px solid var(--border2);
+      -webkit-backdrop-filter: blur(20px);
+      backdrop-filter: blur(20px);
+      z-index: 30;
+      /* Push content above home indicator */
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .tab-btn {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px;
+      background: none; border: none;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      font-weight: 500;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      padding: 8px 0;
+      transition: color .2s;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-appearance: none;
+      appearance: none;
+      /* Minimum tap target 44px for iOS HIG */
+      min-height: 44px;
+    }
+    .tab-btn.active { color: var(--accent); }
+    .tab-icon { font-size: 17px; line-height: 1; }
+
+    .modal-box { border-radius: 16px; padding: 24px 18px; }
+    .modal-box h2 { font-size: 20px; }
+
+    /* iOS modal safe area */
+    #config-modal {
+      padding-left: max(16px, env(safe-area-inset-left));
+      padding-right: max(16px, env(safe-area-inset-right));
+      padding-bottom: max(16px, env(safe-area-inset-bottom));
+      padding-top: max(16px, env(safe-area-inset-top));
+    }
+  }
+
+  /* ─── Scrollbar ─────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.08); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.15); }
+</style>
+</head>
+<body>
+
+<!-- ── Config Modal ──────────────────────────────────────── -->
+<div id="config-modal">
+  <div class="modal-box">
+    <div class="modal-icon">🛰️</div>
+    <h2>GPS Tracker</h2>
+    <p class="subtitle">Enter your Firebase &amp; Google Maps credentials to begin.</p>
+
+    <div class="fields-group">
+      <div class="field">
+        <label>Firebase API Key</label>
+        <div class="field-focus-wrapper">
+          <input id="cfg-apikey" placeholder="AIzaSy…" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text" />
+          <div class="field-line"></div>
+        </div>
+        <div class="hint">Project Settings → General → Web API Key</div>
+      </div>
+      <div class="field">
+        <label>Firebase Database URL</label>
+        <div class="field-focus-wrapper">
+          <input id="cfg-dburl" placeholder="https://your-project-default-rtdb.firebaseio.com" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="url" />
+          <div class="field-line"></div>
+        </div>
+        <div class="hint">Must start with https:// and end with .firebaseio.com</div>
+      </div>
+      <div class="field">
+        <label>Firebase Auth Domain</label>
+        <div class="field-focus-wrapper">
+          <input id="cfg-authdomain" placeholder="your-project.firebaseapp.com" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="url" />
+          <div class="field-line"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Google Maps API Key</label>
+        <div class="field-focus-wrapper">
+          <input id="cfg-mapskey" placeholder="AIzaSy… (Maps JavaScript API enabled)" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" inputmode="text" />
+          <div class="field-line"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="login-error">
+      <span class="error-icon">⚠️</span>
+      <div class="error-text">
+        <strong id="login-error-title">Incorrect credentials</strong>
+        <span id="login-error-msg">Please check the values below and try again.</span>
+      </div>
+    </div>
+
+    <div class="remember-row">
+      <input type="checkbox" id="cfg-remember" checked />
+      <label for="cfg-remember">Remember credentials on this device</label>
+    </div>
+
+    <button class="btn" onclick="startApp()">Launch Tracker →</button>
+  </div>
+</div>
+
+<!-- ── Main App ──────────────────────────────────────────── -->
+<div class="app" id="app" style="display:none">
+
+  <header>
+    <div class="logo-icon"></div>
+    <h1><strong>GPS</strong> Tracker</h1>
+    <div class="header-sep"></div>
+    <div class="header-right">
+      <span class="source-badge" id="source-badge">—</span>
+      <div class="status-pill" id="status-pill">
+        <div class="status-dot"></div>
+        <span id="status-text">Connecting…</span>
+      </div>
+      <button id="reset-btn" onclick="resetApp()" title="Reset & re-enter credentials">↺ Reset</button>
+    </div>
+  </header>
+
+  <aside>
+    <div class="section-label">Last Update</div>
+    <div class="card" id="card-ts">
+      <div class="card-value big" id="ts">—</div>
+    </div>
+
+    <div class="section-label">Coordinates</div>
+    <div class="coords-row">
+      <div class="card" id="card-lat">
+        <div class="card-label">Latitude</div>
+        <div class="card-value small" id="lat">—</div>
+      </div>
+      <div class="card" id="card-lng">
+        <div class="card-label">Longitude</div>
+        <div class="card-value small" id="lng">—</div>
+      </div>
+    </div>
+
+    <div class="section-label">Telemetry</div>
+    <div class="stats-grid">
+      <div class="card">
+        <div class="card-label">Altitude</div>
+        <div class="card-value" id="alt">—</div>
+        <div class="card-sub">meters</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Speed</div>
+        <div class="card-value" id="spd">—</div>
+        <div class="card-sub">km/h</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Satellites</div>
+        <div class="card-value" id="sats">—</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Updates</div>
+        <div class="card-value" id="upd-count">0</div>
+      </div>
+    </div>
+
+    <div class="log-wrap">
+      <div class="section-label">Activity Log</div>
+      <div class="log-box" id="log-box"></div>
+    </div>
+  </aside>
+
+  <!-- ── Mobile Tab Bar ── -->
+  <nav id="tab-bar">
+    <button class="tab-btn active" id="tab-map" onclick="switchTab('map')">
+      <span class="tab-icon">🗺</span>Map
+    </button>
+    <button class="tab-btn" id="tab-info" onclick="switchTab('info')">
+      <span class="tab-icon">📊</span>Info
+    </button>
+  </nav>
+
+  <div id="map-wrap" style="grid-row:2; position:relative;">
+    <div id="map" style="width:100%;height:100%;"></div>
+    <div id="map-overlay">
+      <div class="spinner-wrap">
+        <div class="spinner-ring"></div>
+        <div class="spinner-ring"></div>
+        <div class="spinner-ring"></div>
+      </div>
+      <p id="overlay-msg">Loading map…</p>
+    </div>
+    <button id="recenter-btn" title="Re-centre" onclick="recenterMap()">⊕</button>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  Globals
+// ════════════════════════════════════════════════════════════
+let map, marker, polyline;
+let database;
+let updateCount = 0;
+let autoCenter  = true;
+const TRAIL_MAX = 300;
+const trailCoords = [];
+
+// ════════════════════════════════════════════════════════════
+//  Credential persistence + Start (triggered by modal button)
+// ════════════════════════════════════════════════════════════
+const STORAGE_KEY = 'gpsTrackerCreds';
+
+function loadSavedCredentials() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (!saved) return;
+    if (saved.apiKey)     document.getElementById('cfg-apikey').value     = saved.apiKey;
+    if (saved.dbUrl)      document.getElementById('cfg-dburl').value      = saved.dbUrl;
+    if (saved.authDomain) document.getElementById('cfg-authdomain').value = saved.authDomain;
+    if (saved.mapsKey)    document.getElementById('cfg-mapskey').value    = saved.mapsKey;
+    if (saved.remember !== undefined) document.getElementById('cfg-remember').checked = saved.remember;
+  } catch (e) {}
+}
+
+function saveCredentials(apiKey, dbUrl, authDomain, mapsKey) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ apiKey, dbUrl, authDomain, mapsKey, remember: true }));
+  } catch (e) {}
+}
+
+function clearCredentials() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+}
+
+// Auto-fill on page load
+window.addEventListener('DOMContentLoaded', loadSavedCredentials);
+
+// ── Error banner helpers ──────────────────────────────────
+function showLoginError(title, msg) {
+  document.getElementById('login-error-title').textContent = title;
+  document.getElementById('login-error-msg').textContent   = msg;
+  document.getElementById('login-error').classList.add('visible');
+  document.getElementById('login-error').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function hideLoginError() {
+  document.getElementById('login-error').classList.remove('visible');
+}
+function markField(id, invalid) {
+  const el = document.getElementById(id)?.closest('.field');
+  if (el) el.classList.toggle('invalid', invalid);
+}
+
+function startApp() {
+  const apiKey     = document.getElementById('cfg-apikey').value.trim();
+  const dbUrl      = document.getElementById('cfg-dburl').value.trim();
+  const authDomain = document.getElementById('cfg-authdomain').value.trim();
+  const mapsKey    = document.getElementById('cfg-mapskey').value.trim();
+  const remember   = document.getElementById('cfg-remember').checked;
+
+  // ── Clear previous error state ──────────────────────────
+  hideLoginError();
+  ['cfg-apikey','cfg-dburl','cfg-authdomain','cfg-mapskey'].forEach(id => markField(id, false));
+
+  // ── Field validation ────────────────────────────────────
+  const missing = [];
+  if (!apiKey)  { markField('cfg-apikey', true);  missing.push('Firebase API Key'); }
+  if (!dbUrl)   { markField('cfg-dburl',  true);  missing.push('Database URL'); }
+  if (!mapsKey) { markField('cfg-mapskey',true);  missing.push('Google Maps API Key'); }
+
+  if (missing.length) {
+    showLoginError(
+      'Missing required fields',
+      `Please fill in: ${missing.join(', ')}.`
+    );
+    return;
+  }
+
+  if (!dbUrl.startsWith('https://') || !dbUrl.includes('.firebaseio.com')) {
+    markField('cfg-dburl', true);
+    showLoginError('Invalid Database URL', 'Must start with https:// and include .firebaseio.com');
+    return;
+  }
+
+  // ── Show loading state ──────────────────────────────────
+  const btn = document.querySelector('.btn');
+  btn.classList.add('loading');
+  btn.textContent = 'Connecting';
+
+  if (remember) {
+    saveCredentials(apiKey, dbUrl, authDomain, mapsKey);
+  } else {
+    clearCredentials();
+  }
+
+  // ── Init Firebase ───────────────────────────────────────
+  try {
+    firebase.initializeApp({ apiKey, authDomain, databaseURL: dbUrl });
+    database = firebase.database();
+  } catch (e) {
+    btn.classList.remove('loading');
+    btn.textContent = 'Launch Tracker →';
+    markField('cfg-apikey', true);
+    markField('cfg-dburl', true);
+    showLoginError('Firebase connection failed', e.message || 'Check your API Key and Database URL.');
+    return;
+  }
+
+  // ── Test Firebase connectivity before proceeding ────────
+  database.ref('.info/connected').once('value')
+    .then(() => {
+      // Firebase connected — now load Google Maps
+      document.getElementById('config-modal').classList.add('hidden');
+      document.getElementById('app').style.display = '';
+
+      const s = document.createElement('script');
+      s.src   = `https://maps.googleapis.com/maps/api/js?key=${mapsKey}&callback=initMap`;
+      s.async = true;
+
+      // Maps API key error: Google fires gm-err-authfailure event
+      window.gm_authFailure = function() {
+        // Show modal again
+        document.getElementById('config-modal').classList.remove('hidden');
+        document.getElementById('app').style.display = 'none';
+        btn.classList.remove('loading');
+        btn.textContent = 'Launch Tracker →';
+        markField('cfg-mapskey', true);
+        showLoginError('Invalid Google Maps API Key', 'The Maps API key was rejected. Check that the Maps JavaScript API is enabled for this key.');
+      };
+
+      s.onerror = function() {
+        document.getElementById('config-modal').classList.remove('hidden');
+        document.getElementById('app').style.display = 'none';
+        btn.classList.remove('loading');
+        btn.textContent = 'Launch Tracker →';
+        markField('cfg-mapskey', true);
+        showLoginError('Failed to load Google Maps', 'Check your Maps API Key and network connection.');
+      };
+
+      document.head.appendChild(s);
+    })
+    .catch(err => {
+      btn.classList.remove('loading');
+      btn.textContent = 'Launch Tracker →';
+      markField('cfg-apikey', true);
+      markField('cfg-dburl', true);
+      showLoginError('Firebase authentication failed', 'Your API Key or Database URL appears to be incorrect.');
+    });
+}
+
+// ════════════════════════════════════════════════════════════
+//  Google Maps init (called by Maps SDK after load)
+// ════════════════════════════════════════════════════════════
+window.initMap = initMapFn;
+function initMapFn() {
+  map = new google.maps.Map(document.getElementById('map'), {
+    center: { lat: 21.421005, lng: 39.287483 },
+    zoom: 16,
+    mapTypeId: 'roadmap',
+    styles: darkStyle(),
+    disableDefaultUI: true,
+    zoomControl: true,
+    zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
+  });
+
+  marker = new google.maps.Marker({
+    map,
+    title: 'Live Tracker',
+    icon: {
+      url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(pulseMarkerSVG()),
+      scaledSize: new google.maps.Size(44, 44),
+      anchor: new google.maps.Point(22, 22),
+    },
+  });
+
+  polyline = new google.maps.Polyline({
+    map,
+    geodesic: true,
+    strokeColor: '#00e5ff',
+    strokeOpacity: 0.7,
+    strokeWeight: 2,
+  });
+
+  // Disable auto-center on manual drag
+  map.addListener('dragstart', () => autoCenter = false);
+
+  // Reset button state (in case user comes back from error)
+  const btn = document.querySelector('.btn');
+  if (btn) { btn.classList.remove('loading'); btn.textContent = 'Launch Tracker →'; }
+
+  setOverlay('Waiting for GPS data…');
+  addLog('Map ready — starting Firebase listener', 'ok');
+  startFirebaseListener();
+};
+
+// ════════════════════════════════════════════════════════════
+//  Firebase Real-Time Listener
+//
+//  ✅ ref(database, "tracker")      — matches FIREBASE_PATH "/tracker"
+//  ✅ data.latitude / data.longitude — matches ESP32 json.set("latitude"…)
+// ════════════════════════════════════════════════════════════
+function startFirebaseListener() {
+  // ✅ "tracker" without leading slash — Firebase JS SDK style
+  const trackerRef = database.ref('tracker');
+
+  trackerRef.on('value', snapshot => {
+    const data = snapshot.val();
+
+    // Guard: no data yet
+    if (!data) {
+      addLog('No data in /tracker yet — waiting for ESP32…', 'warn');
+      setStatus('', 'Waiting');
+      return;
+    }
+
+    // ✅ Read field names that match ESP32 json.set() keys exactly
+    const lat = parseFloat(data.latitude);   // ✅ data.latitude  (not data.lat)
+    const lng = parseFloat(data.longitude);  // ✅ data.longitude (not data.lng)
+    const ts  = data.timestamp  || '—';
+    const src = data.coord_source || '—';
+
+    // Validate parsed numbers
+    if (isNaN(lat) || isNaN(lng)) {
+      addLog('Invalid lat/lng received: ' + JSON.stringify(data), 'err');
+      setStatus('error', 'Bad Data');
+      return;
+    }
+
+    // Update UI
+    updateSidebar(lat, lng, ts, src, data);
+    moveMarker(lat, lng);
+
+    updateCount++;
+    document.getElementById('upd-count').textContent = updateCount;
+
+    flashCard('card-lat');
+    flashCard('card-lng');
+    flashCard('card-ts');
+
+    addLog(`${lat.toFixed(6)}, ${lng.toFixed(6)}  [${src}]`, 'ok');
+    setStatus('live', 'Live');
+
+  }, err => {
+    addLog('Firebase error: ' + err.message, 'err');
+    setStatus('error', 'Error');
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+//  Sidebar update
+// ════════════════════════════════════════════════════════════
+function updateSidebar(lat, lng, ts, src, data) {
+  document.getElementById('lat').textContent = lat.toFixed(6) + '°';
+  document.getElementById('lng').textContent = lng.toFixed(6) + '°';
+
+  // Parse timestamp
+  let displayTs = ts;
+  try {
+    const d = new Date(ts);
+    if (!isNaN(d)) displayTs = d.toLocaleTimeString();
+  } catch {}
+  document.getElementById('ts').textContent = displayTs;
+
+  document.getElementById('alt').textContent  =
+    data.altitude  != null ? parseFloat(data.altitude).toFixed(1)  : '—';
+  document.getElementById('spd').textContent  =
+    data.speed_kmh != null ? parseFloat(data.speed_kmh).toFixed(1) : '—';
+  document.getElementById('sats').textContent =
+    data.satellites != null ? data.satellites : '—';
+
+  // Source badge
+  const badge = document.getElementById('source-badge');
+  badge.textContent = src;
+  badge.className   = 'source-badge ' +
+    (src === 'REAL_GPS' ? 'real' : src === 'FALLBACK' ? 'fallback' : '');
+}
+
+// ════════════════════════════════════════════════════════════
+//  Haversine distance between two {lat,lng} points (metres)
+// ════════════════════════════════════════════════════════════
+function haversineMetres(a, b) {
+  const R = 6371000;
+  const toRad = x => x * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat/2)**2 +
+            Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.asin(Math.sqrt(s));
+}
+
+// Max plausible jump between updates (500 m — adjust if needed)
+const MAX_JUMP_METRES = 500;
+// How close a candidate point must be to a pending outlier to count as confirmation (metres)
+const OUTLIER_CLUSTER_METRES = 50;
+
+// Pending outlier: a distant point waiting for confirmation
+let pendingOutlier = null; // { pos, count }
+
+// ════════════════════════════════════════════════════════════
+//  Map: move marker + update trail
+// ════════════════════════════════════════════════════════════
+function moveMarker(lat, lng) {
+  const pos = { lat, lng };
+
+  // Check if this point is a large jump from the last accepted position
+  if (trailCoords.length > 0) {
+    const last = trailCoords[trailCoords.length - 1];
+    const dist = haversineMetres(last, pos);
+
+    if (dist > MAX_JUMP_METRES) {
+      // Is this point near a pending outlier?
+      if (pendingOutlier && haversineMetres(pendingOutlier.pos, pos) <= OUTLIER_CLUSTER_METRES) {
+        pendingOutlier.count++;
+        if (pendingOutlier.count >= 2) {
+          // Confirmed — accept it and clear pending
+          addLog(`Outlier confirmed after ${pendingOutlier.count} consistent readings — accepting`, 'ok');
+          pendingOutlier = null;
+          // fall through to accept below
+        } else {
+          addLog(`Outlier seen ${pendingOutlier.count}x — waiting for confirmation`, 'warn');
+          return;
+        }
+      } else {
+        // First time seeing this distant point — hold it
+        pendingOutlier = { pos, count: 1 };
+        addLog(`Suspicious jump ${Math.round(dist)} m — holding for confirmation`, 'warn');
+        return;
+      }
+    } else {
+      // Normal point — clear any pending outlier (it was noise)
+      if (pendingOutlier) {
+        addLog('Pending outlier discarded — normal reading resumed', 'warn');
+        pendingOutlier = null;
+      }
+    }
+  }
+
+  document.getElementById('map-overlay').classList.add('hidden');
+  marker.setPosition(pos);
+
+  trailCoords.push(pos);
+  if (trailCoords.length > TRAIL_MAX) trailCoords.shift();
+  polyline.setPath(trailCoords);
+
+  if (autoCenter) map.panTo(pos);
+}
+
+function recenterMap() {
+  autoCenter = true;
+  if (marker && marker.getPosition()) map.panTo(marker.getPosition());
+}
+
+// ════════════════════════════════════════════════════════════
+//  Reset — clear state and return to config modal
+// ════════════════════════════════════════════════════════════
+function resetApp() {
+  if (!confirm('Clear the trail and reset all data?')) return;
+
+  // Clear map trail & marker position (keep map alive)
+  trailCoords.length = 0;
+  pendingOutlier = null;
+  if (polyline) polyline.setPath([]);
+  if (marker)   marker.setPosition(null);
+  autoCenter = true;
+
+  // Reset counters & sidebar
+  updateCount = 0;
+  document.getElementById('upd-count').textContent = '0';
+  document.getElementById('ts').textContent   = '—';
+  document.getElementById('lat').textContent  = '—';
+  document.getElementById('lng').textContent  = '—';
+  document.getElementById('alt').textContent  = '—';
+  document.getElementById('spd').textContent  = '—';
+  document.getElementById('sats').textContent = '—';
+  document.getElementById('log-box').innerHTML = '';
+  document.getElementById('source-badge').textContent = '—';
+  document.getElementById('source-badge').className = 'source-badge';
+  setStatus('', 'Waiting');
+  setOverlay('Waiting for GPS data…');
+
+  addLog('Tracker reset — waiting for next update', 'warn');
+}
+
+// ════════════════════════════════════════════════════════════
+//  Mobile tab switching
+// ════════════════════════════════════════════════════════════
+function switchTab(tab) {
+  const aside = document.querySelector('aside');
+  const mapBtn  = document.getElementById('tab-map');
+  const infoBtn = document.getElementById('tab-info');
+  if (tab === 'info') {
+    aside.classList.add('mobile-visible');
+    infoBtn.classList.add('active');
+    mapBtn.classList.remove('active');
+  } else {
+    aside.classList.remove('mobile-visible');
+    mapBtn.classList.add('active');
+    infoBtn.classList.remove('active');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+//  Helpers
+// ════════════════════════════════════════════════════════════
+function setStatus(cls, label) {
+  const pill = document.getElementById('status-pill');
+  const text = document.getElementById('status-text');
+  pill.className  = 'status-pill ' + cls;
+  text.textContent = label;
+}
+
+function setOverlay(msg) {
+  document.getElementById('overlay-msg').textContent = msg;
+  document.getElementById('map-overlay').classList.remove('hidden');
+}
+
+function flashCard(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('updated');
+  void el.offsetWidth; // reflow
+  el.classList.add('updated');
+}
+
+function addLog(msg, type = '') {
+  const box  = document.getElementById('log-box');
+  const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+  const row  = document.createElement('div');
+  row.className = 'log-entry';
+  row.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${type}">${msg}</span>`;
+  box.prepend(row);
+  while (box.children.length > 80) box.removeChild(box.lastChild);
+}
+
+// ════════════════════════════════════════════════════════════
+//  Dark map style
+// ════════════════════════════════════════════════════════════
+function darkStyle() {
+  return [
+    {elementType:'geometry',               stylers:[{color:'#0d0e13'}]},
+    {elementType:'labels.text.stroke',     stylers:[{color:'#0d0e13'}]},
+    {elementType:'labels.text.fill',       stylers:[{color:'#5a6080'}]},
+    {featureType:'road',elementType:'geometry',stylers:[{color:'#1a1d28'}]},
+    {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#1e2232'}]},
+    {featureType:'water',elementType:'geometry',stylers:[{color:'#060810'}]},
+    {featureType:'poi',                    stylers:[{visibility:'off'}]},
+    {featureType:'transit',                stylers:[{visibility:'off'}]},
+    {featureType:'administrative',elementType:'geometry',stylers:[{color:'#1e2130'}]},
+  ];
+}
+
+// ════════════════════════════════════════════════════════════
+//  Animated SVG marker
+// ════════════════════════════════════════════════════════════
+function pulseMarkerSVG() {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44">
+    <circle cx="22" cy="22" r="20" fill="none" stroke="#00e5ff" stroke-width="2" opacity=".2">
+      <animate attributeName="r" values="12;22" dur="1.6s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values=".6;0" dur="1.6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="22" cy="22" r="9" fill="#00e5ff" stroke="#fff" stroke-width="2.5"/>
+    <circle cx="22" cy="22" r="3.5" fill="#fff"/>
+  </svg>`;
+}
+</script>
+</body>
+</html>
